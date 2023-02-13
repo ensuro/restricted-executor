@@ -1,8 +1,20 @@
 {
+  "scripts": {
+    "prettier": "prettier --write 'contracts/**/*.sol' --write 'test/**/*.js'",
+    "solhint": "solhint 'contracts/**/*.sol'"
+  },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^2.0.1",
+    "@nomiclabs/hardhat-web3": "^2.0.0",
+    "@openzeppelin/hardhat-upgrades": "^1.22.1",
     "hardhat": "^2.12.6",
     "prettier": "^2.8.4",
-    "solhint": "^3.3.8"
+    "solhint": "^3.3.8",
+    "solhint-plugin-prettier": "^0.0.5",
+    "web3": "^1.8.2"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^4.8.1",
+    "@openzeppelin/contracts-upgradeable": "^4.8.1"
   }
 }
