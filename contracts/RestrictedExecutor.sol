@@ -46,6 +46,20 @@ contract RestrictedExecutor is Initializable, AccessControlUpgradeable, UUPSUpgr
     _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
   }
 
+  /**
+   * @dev Check that _msgSender() has role. In addition to checking the sender's role, `address(0)`'s
+   * role is also considered. Granting a role to `address(0)` is equivalent to enabling this role
+   * for everyone.
+   *
+   * Inspired on [OpenZeppelin's TimeLockController `onlyRoleOrOpenRole` modifier](https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/governance/TimelockController.sol)
+   *
+   */
+  function _checkRoleOrOpenRole(bytes32 role) internal view {
+    if (!hasRole(role, address(0))) {
+      _checkRole(role, _msgSender());
+    }
+  }
+
   function _authorizeUpgrade(address) internal override onlyRole(UPGRADER_ROLE) {}
 
   /**
@@ -104,7 +118,7 @@ contract RestrictedExecutor is Initializable, AccessControlUpgradeable, UUPSUpgr
   ) public virtual {
     bytes32 id = hashAction(target, value, data, salt);
     require(_actions[id], "RestrictedExecutor: unkwnown action");
-    _checkRole(id);
+    _checkRoleOrOpenRole(id);
 
     (bool success, ) = target.call{value: value}(data);
     require(success, "RestrictedExecutor: underlying transaction reverted");

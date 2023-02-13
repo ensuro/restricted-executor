@@ -85,6 +85,27 @@ describe("RestrictedExecutor", () => {
       .withArgs(keccak256("testing"), 280);
   });
 
+  it("allows open actions", async () => {
+    const { authorizer, proposer, signers, restrictedExecutor, callReceiver, receiverEncode } = await loadFixture(
+      accessControlledFixture
+    );
+    const [randomAddress] = signers;
+
+    await callReceiver.grantRole(ROLE1, restrictedExecutor.address);
+
+    const action = createAction(callReceiver.address, receiverEncode("role1Function", [keccak256("openActions"), 280]));
+
+    await restrictedExecutor.connect(proposer).createAction(action.target, action.value, action.data, action.salt);
+
+    await restrictedExecutor.connect(authorizer).grantRole(action.id, hre.ethers.constants.AddressZero);
+
+    await expect(
+      restrictedExecutor.connect(randomAddress).execute(action.target, action.value, action.data, action.salt)
+    )
+      .to.emit(callReceiver, "Role1FunctionExecuted")
+      .withArgs(keccak256("openActions"), 280);
+  });
+
   it("allows only registered actions to run", async () => {
     const { owner, signers, restrictedExecutor, callReceiver, receiverEncode } = await loadFixture(
       accessControlledFixture
@@ -101,7 +122,7 @@ describe("RestrictedExecutor", () => {
     ).to.be.revertedWith("RestrictedExecutor: unkwnown action");
   });
 
-  it("reverts if restricted executor has not been granted permissions on the target", async () => {
+  it("reverts if restricted executor contract has not been granted permissions on the target contract", async () => {
     const { authorizer, proposer, signers, restrictedExecutor, callReceiver, receiverEncode } = await loadFixture(
       accessControlledFixture
     );
