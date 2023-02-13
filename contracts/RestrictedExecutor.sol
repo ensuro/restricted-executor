@@ -49,10 +49,14 @@ contract RestrictedExecutor is Initializable, AccessControlUpgradeable, UUPSUpgr
   function _authorizeUpgrade(address) internal override onlyRole(UPGRADER_ROLE) {}
 
   /**
-   * @dev Returns the identifier of an operation containing a single
-   * transaction.
+   *
+   * @param target the target contract
+   * @param value the ether amount to send along with the transaction
+   * @param data the encoded payload for the target contract (an encoded function call)
+   * @param salt a salt to ensure action id unicity, usually just zero
+   * @return hash the action hash / id
    */
-  function hashOperation(
+  function hashAction(
     address target,
     uint256 value,
     bytes calldata data,
@@ -61,26 +65,45 @@ contract RestrictedExecutor is Initializable, AccessControlUpgradeable, UUPSUpgr
     return keccak256(abi.encode(target, value, data, salt));
   }
 
+  /**
+   *
+   * @dev Creates a new action. Check hashAction for parameter details.
+   *
+   * Requirements:
+   *   - onlyRole(PROPOSER_ROLE)
+   *
+   * Events:
+   *   - ActionCreated with the action id and details
+   *   - RoleAdminChanged granting AUTHORIZER_ROLE admin on the new action
+   */
   function createAction(
     address target,
     uint256 value,
     bytes calldata data,
     bytes32 salt
   ) public virtual onlyRole(PROPOSER_ROLE) {
-    bytes32 id = hashOperation(target, value, data, salt);
+    bytes32 id = hashAction(target, value, data, salt);
     _actions[id] = true;
     _setRoleAdmin(id, AUTHORIZER_ROLE);
     emit ActionCreated(id, target, value, data, salt);
   }
 
+  /**
+   *
+   * @dev Executes an action. Check hashAction for parameter details.
+   *
+   * Requirements:
+   *   - Action was created
+   *   - msg.sender has been granted permissions on the action
+   */
   function execute(
     address target,
     uint256 value,
     bytes calldata data,
     bytes32 salt
   ) public virtual {
-    bytes32 id = hashOperation(target, value, data, salt);
-    // require(_actions[id], "action does not exist");
+    bytes32 id = hashAction(target, value, data, salt);
+    require(_actions[id], "RestrictedExecutor: unkwnown action");
     _checkRole(id);
 
     (bool success, ) = target.call{value: value}(data);

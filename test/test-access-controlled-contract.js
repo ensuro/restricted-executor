@@ -14,15 +14,15 @@ const accessControlMessage = (address, role) =>
   `AccessControl: account ${address.toLowerCase()} is missing role ${role}`;
 
 describe("RestrictedExecutor", () => {
-  it("hashes operations", async () => {
+  it("hashes actions", async () => {
     const { owner, restrictedExecutor, callReceiver, receiverEncode } = await loadFixture(accessControlledFixture);
 
     const action1 = createAction(callReceiver.address, receiverEncode("role1Function", [keccak256("testing"), 280]));
-    let hash = await restrictedExecutor.hashOperation(callReceiver.address, action1.value, action1.data, action1.salt);
+    let hash = await restrictedExecutor.hashAction(callReceiver.address, action1.value, action1.data, action1.salt);
     expect(hash).to.equal(action1.id);
 
     const action2 = createAction(callReceiver.address, receiverEncode("role2Function", [0, owner.address]));
-    hash = await restrictedExecutor.hashOperation(callReceiver.address, action2.value, action2.data, action2.salt);
+    hash = await restrictedExecutor.hashAction(callReceiver.address, action2.value, action2.data, action2.salt);
     expect(hash).to.equal(action2.id);
   });
 
@@ -64,6 +64,8 @@ describe("RestrictedExecutor", () => {
     );
     const [randomAddress] = signers;
 
+    await callReceiver.grantRole(ROLE1, restrictedExecutor.address);
+
     const action = createAction(callReceiver.address, receiverEncode("role1Function", [keccak256("testing"), 280]));
 
     await restrictedExecutor.connect(proposer).createAction(action.target, action.value, action.data, action.salt);
@@ -82,6 +84,38 @@ describe("RestrictedExecutor", () => {
       .to.emit(callReceiver, "Role1FunctionExecuted")
       .withArgs(keccak256("testing"), 280);
   });
+
+  it("allows only registered actions to run", async () => {
+    const { owner, signers, restrictedExecutor, callReceiver, receiverEncode } = await loadFixture(
+      accessControlledFixture
+    );
+    const [randomAddress] = signers;
+
+    const action = createAction(callReceiver.address, receiverEncode("role1Function", [keccak256("testing"), 280]));
+
+    // owner grants action permissions (authorizer has not been granted admin on the action's role because the action was never created)
+    await restrictedExecutor.connect(owner).grantRole(action.id, randomAddress.address);
+
+    await expect(
+      restrictedExecutor.connect(randomAddress).execute(action.target, action.value, action.data, action.salt)
+    ).to.be.revertedWith("RestrictedExecutor: unkwnown action");
+  });
+
+  it("reverts if restricted executor has not been granted permissions on the target", async () => {
+    const { authorizer, proposer, signers, restrictedExecutor, callReceiver, receiverEncode } = await loadFixture(
+      accessControlledFixture
+    );
+    const [randomAddress] = signers;
+
+    const action = createAction(callReceiver.address, receiverEncode("role1Function", [keccak256("testing"), 280]));
+
+    await restrictedExecutor.connect(proposer).createAction(action.target, action.value, action.data, action.salt);
+    await restrictedExecutor.connect(authorizer).grantRole(action.id, randomAddress.address);
+
+    await expect(
+      restrictedExecutor.connect(randomAddress).execute(action.target, action.value, action.data, action.salt)
+    ).to.be.revertedWith("RestrictedExecutor: underlying transaction reverted");
+  });
 });
 
 async function accessControlledFixture() {
@@ -94,7 +128,6 @@ async function accessControlledFixture() {
 
   const AccessControlledContract = await hre.ethers.getContractFactory("AccessControlledContract");
   const callReceiver = await AccessControlledContract.deploy();
-  await callReceiver.grantRole(ROLE1, restrictedExecutor.address);
 
   return {
     owner,
