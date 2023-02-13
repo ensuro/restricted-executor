@@ -5,6 +5,8 @@ import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/acce
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
+import "hardhat/console.sol";
+
 contract RestrictedExecutor is Initializable, AccessControlUpgradeable, UUPSUpgradeable {
   /**
    * @notice Can authorize actions
@@ -65,7 +67,7 @@ contract RestrictedExecutor is Initializable, AccessControlUpgradeable, UUPSUpgr
   /**
    *
    * @param target the target contract
-   * @param value the ether amount to send along with the transaction
+   * @param value the ether amount to send along with the call
    * @param data the encoded payload for the target contract (an encoded function call)
    * @param salt a salt to ensure action id unicity, usually just zero
    * @return hash the action hash / id
@@ -77,6 +79,23 @@ contract RestrictedExecutor is Initializable, AccessControlUpgradeable, UUPSUpgr
     bytes32 salt
   ) public pure virtual returns (bytes32 hash) {
     return keccak256(abi.encode(target, value, data, salt));
+  }
+
+  /**
+   *
+   * @param targets the target contracts
+   * @param values the ether amounts to send along with the contract calls
+   * @param payloads the encoded payloads for the target contracts (encoded function calls)
+   * @param salt a salt to ensure action id unicity, usually just zero
+   * @return hash the action hash / id
+   */
+  function hashActionBatch(
+    address[] calldata targets,
+    uint256[] calldata values,
+    bytes[] calldata payloads,
+    bytes32 salt
+  ) public pure virtual returns (bytes32 hash) {
+    return keccak256(abi.encode(targets, values, payloads, salt));
   }
 
   /**
@@ -104,6 +123,43 @@ contract RestrictedExecutor is Initializable, AccessControlUpgradeable, UUPSUpgr
 
   /**
    *
+   * @dev Creates a new action batch. Check hashActionBatch for parameter details.
+   *
+   * Requirements:
+   *   - onlyRole(PROPOSER_ROLE)
+   *
+   * Events:
+   *   - ActionCreated for each action in the batch, all with the same action id
+   *   - RoleAdminChanged granting AUTHORIZER_ROLE admin on the new action
+   */
+  function createActionBatch(
+    address[] calldata targets,
+    uint256[] calldata values,
+    bytes[] calldata payloads,
+    bytes32 salt
+  ) public virtual onlyRole(PROPOSER_ROLE) {
+    require(targets.length == values.length, "RestrictedExecutor: length mistmatch");
+    require(targets.length == payloads.length, "RestrictedExecutor: length mistmatch");
+
+    bytes32 id = hashActionBatch(targets, values, payloads, salt);
+    _actions[id] = true;
+    _setRoleAdmin(id, AUTHORIZER_ROLE);
+
+    for (uint256 i = 0; i < targets.length; ++i) {
+      emit ActionCreated(id, targets[i], values[i], payloads[i], salt);
+    }
+  }
+
+  /**
+   * @dev Execute a single action and check for success
+   */
+  function _execute(address target, uint256 value, bytes calldata data) internal virtual {
+    (bool success, ) = target.call{value: value}(data);
+    require(success, "RestrictedExecutor: underlying transaction reverted");
+  }
+
+  /**
+   *
    * @dev Executes an action. Check hashAction for parameter details.
    *
    * Requirements:
@@ -119,8 +175,33 @@ contract RestrictedExecutor is Initializable, AccessControlUpgradeable, UUPSUpgr
     bytes32 id = hashAction(target, value, data, salt);
     require(_actions[id], "RestrictedExecutor: unkwnown action");
     _checkRoleOrOpenRole(id);
+    _execute(target, value, data);
+  }
 
-    (bool success, ) = target.call{value: value}(data);
-    require(success, "RestrictedExecutor: underlying transaction reverted");
+  /**
+   *
+   * @dev Executes an action batch. Check hashActionBatch for parameter details.
+   *
+   * Requirements:
+   *   - Action batch was created
+   *   - msg.sender has been granted permissions on the action
+   */
+  function executeBatch(
+    address[] calldata targets,
+    uint256[] calldata values,
+    bytes[] calldata payloads,
+    bytes32 salt
+  ) public virtual {
+    require(targets.length == values.length, "RestrictedExecutor: length mistmatch");
+    require(targets.length == payloads.length, "RestrictedExecutor: length mistmatch");
+    bytes32 id = hashActionBatch(targets, values, payloads, salt);
+    require(_actions[id], "RestrictedExecutor: unkwnown action");
+    _checkRoleOrOpenRole(id);
+
+    for (uint256 i = 0; i < targets.length; ++i) {
+      _execute(targets[i], values[i], payloads[i]);
+    }
+
+    // TODO: reentrancy check/guard ??
   }
 }

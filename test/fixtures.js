@@ -1,6 +1,9 @@
 const hre = require("hardhat");
 const keccak256 = hre.web3.utils.keccak256;
 
+const accessControlMessage = (address, role) =>
+  `AccessControl: account ${address.toLowerCase()} is missing role ${role}`;
+
 async function accessControlledFixture() {
   const [owner, authorizer, proposer, ...signers] = await hre.ethers.getSigners();
   const RestrictedExecutor = await hre.ethers.getContractFactory("RestrictedExecutor");
@@ -66,4 +69,33 @@ function createAction(target, data, value, salt) {
   return action;
 }
 
-module.exports = { accessControlledFixture, createAction, simpleContractFixture };
+function createActionBatch(targets, payloads, values, salt) {
+  values = values || targets.map(() => 0);
+
+  if (!(targets.length === payloads.length && targets.length === values.length))
+    throw new Error("All arrays must be the same size");
+
+  const action = {
+    targets,
+    values,
+    payloads,
+    salt: salt || hre.ethers.utils.hexZeroPad("0x0", 32),
+  };
+
+  action.id = keccak256(
+    hre.web3.eth.abi.encodeParameters(
+      ["address[]", "uint256[]", "bytes[]", "bytes32"],
+      [action.targets, action.values, action.payloads, action.salt]
+    )
+  );
+
+  return action;
+}
+
+module.exports = {
+  accessControlledFixture,
+  createAction,
+  createActionBatch,
+  simpleContractFixture,
+  accessControlMessage,
+};

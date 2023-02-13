@@ -2,13 +2,10 @@ const { loadFixture } = require("@nomicfoundation/hardhat-network-helpers");
 const { expect } = require("chai");
 const hre = require("hardhat");
 
-const { createAction, simpleContractFixture } = require("./fixtures");
-const { PROPOSER_ROLE, AUTHORIZER_ROLE, ROLE1, DEFAULT_ADMIN_ROLE } = require("./constants");
+const { accessControlMessage, createAction, simpleContractFixture } = require("./fixtures");
+const { PROPOSER_ROLE, AUTHORIZER_ROLE, DEFAULT_ADMIN_ROLE } = require("./constants");
 
 const keccak256 = hre.web3.utils.keccak256;
-
-const accessControlMessage = (address, role) =>
-  `AccessControl: account ${address.toLowerCase()} is missing role ${role}`;
 
 describe("Simple actions", () => {
   it("hashes actions", async () => {
