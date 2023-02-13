@@ -5,113 +5,123 @@ const hre = require("hardhat");
 
 const keccak256 = hre.web3.utils.keccak256;
 
+const PROPOSER_ROLE = keccak256("PROPOSER_ROLE");
+const AUTHORIZER_ROLE = keccak256("AUTHORIZER_ROLE");
+const ROLE1 = keccak256("ROLE1");
+const DEFAULT_ADMIN_ROLE = hre.ethers.utils.hexZeroPad("0x0", 32);
+
+const accessControlMessage = (address, role) =>
+  `AccessControl: account ${address.toLowerCase()} is missing role ${role}`;
+
 describe("RestrictedExecutor", () => {
-  const PROPOSER_ROLE = keccak256("PROPOSER_ROLE");
-  const AUTHORIZER_ROLE = keccak256("AUTHORIZER_ROLE");
-  const ROLE1 = keccak256("ROLE1");
-  const DEFAULT_ADMIN_ROLE = hre.ethers.utils.hexZeroPad("0x0", 32);
-
   it("hashes operations", async () => {
-    const [owner, wallet1, wallet2] = await hre.ethers.getSigners();
-    const RestrictedExecutor = await hre.ethers.getContractFactory("RestrictedExecutor");
-    const re = await hre.upgrades.deployProxy(RestrictedExecutor, [[], []]);
+    const { owner, restrictedExecutor, callReceiver, receiverEncode } = await loadFixture(accessControlledFixture);
 
-    const AccessControlledContract = await hre.ethers.getContractFactory("AccessControlledContract");
-    const callReceiver = await AccessControlledContract.deploy();
+    const action1 = createAction(callReceiver.address, receiverEncode("role1Function", [keccak256("testing"), 280]));
+    let hash = await restrictedExecutor.hashOperation(callReceiver.address, action1.value, action1.data, action1.salt);
+    expect(hash).to.equal(action1.id);
 
-    const salt = hre.ethers.utils.hexZeroPad("0x0", 32);
-    const data1 = callReceiver.interface.encodeFunctionData("role1Function", [keccak256("testing"), 280]);
-    let hash = await re.hashOperation(callReceiver.address, 0, data1, salt);
-    let { id: expectedHash } = createAction(callReceiver.address, 0, data1, salt);
-    expect(hash).to.equal(expectedHash);
-
-    const data2 = callReceiver.interface.encodeFunctionData("role2Function", [0, owner.address]);
-    hash = await re.hashOperation(callReceiver.address, 0, data2, salt);
-    expectedHash = createAction(callReceiver.address, 0, data2, salt).id;
-    expect(hash).to.equal(expectedHash);
+    const action2 = createAction(callReceiver.address, receiverEncode("role2Function", [0, owner.address]));
+    hash = await restrictedExecutor.hashOperation(callReceiver.address, action2.value, action2.data, action2.salt);
+    expect(hash).to.equal(action2.id);
   });
 
   it("only allows proposers to create new actions", async () => {
-    const [owner, authorizer, proposer, randomAddress] = await hre.ethers.getSigners();
-
-    const RestrictedExecutor = await hre.ethers.getContractFactory("RestrictedExecutor");
-    const re = await hre.upgrades.deployProxy(RestrictedExecutor, [[authorizer.address], [proposer.address]]);
-
-    expect(await re.hasRole(PROPOSER_ROLE, proposer.address)).to.be.true;
-
-    const AccessControlledContract = await hre.ethers.getContractFactory("AccessControlledContract");
-    const callReceiver = await AccessControlledContract.deploy();
-
-    const action = createAction(
-      callReceiver.address,
-      0,
-      callReceiver.interface.encodeFunctionData("role1Function", [keccak256("testing"), 280]),
-      hre.ethers.utils.hexZeroPad("0x0", 32)
+    const { proposer, signers, restrictedExecutor, callReceiver, receiverEncode } = await loadFixture(
+      accessControlledFixture
     );
+    const [randomAddress] = signers;
+
+    expect(await restrictedExecutor.hasRole(PROPOSER_ROLE, proposer.address)).to.be.true;
+
+    const action = createAction(callReceiver.address, receiverEncode("role1Function", [keccak256("testing"), 280]));
 
     await expect(
-      re.connect(randomAddress).createAction(action.target, action.value, action.data, action.salt)
-    ).to.be.revertedWith(
-      `AccessControl: account ${randomAddress.address.toLowerCase()} is missing role ${PROPOSER_ROLE}`
-    );
+      restrictedExecutor.connect(randomAddress).createAction(action.target, action.value, action.data, action.salt)
+    ).to.be.revertedWith(accessControlMessage(randomAddress.address, PROPOSER_ROLE));
 
-    await expect(re.connect(proposer).createAction(action.target, action.value, action.data, action.salt))
-      .to.emit(re, "ActionCreated")
+    await expect(
+      restrictedExecutor.connect(proposer).createAction(action.target, action.value, action.data, action.salt)
+    )
+      .to.emit(restrictedExecutor, "ActionCreated")
       .withArgs(action.id, action.target, action.value, action.data, action.salt);
   });
 
-  it("grants AUTHORIZER permissions on new actions", async () => {
-    const [owner, authorizer, proposer, randomAddress] = await hre.ethers.getSigners();
-    const RestrictedExecutor = await hre.ethers.getContractFactory("RestrictedExecutor");
-    const re = await hre.upgrades.deployProxy(RestrictedExecutor, [[authorizer.address], [proposer.address]]);
+  it("grants AUTHORIZER_ROLE admin permissions on new actions", async () => {
+    const { proposer, restrictedExecutor, callReceiver, receiverEncode } = await loadFixture(accessControlledFixture);
 
-    const AccessControlledContract = await hre.ethers.getContractFactory("AccessControlledContract");
-    const callReceiver = await AccessControlledContract.deploy();
+    const data = receiverEncode("role1Function", [keccak256("testing"), 280]);
+    const action = createAction(callReceiver.address, data);
 
-    const data = callReceiver.interface.encodeFunctionData("role1Function", [keccak256("testing"), 280]);
-    const action = createAction(callReceiver.address, 0, data, hre.ethers.utils.hexZeroPad("0x0", 32));
-
-    await expect(re.connect(proposer).createAction(action.target, 0, data, action.salt))
-      .to.emit(re, "RoleAdminChanged")
+    await expect(restrictedExecutor.connect(proposer).createAction(action.target, action.value, data, action.salt))
+      .to.emit(restrictedExecutor, "RoleAdminChanged")
       .withArgs(action.id, DEFAULT_ADMIN_ROLE, AUTHORIZER_ROLE);
   });
 
   it("allows only authorized accounts to run actions", async () => {
-    const [owner, authorizer, proposer, randomAddress] = await hre.ethers.getSigners();
-    const RestrictedExecutor = await hre.ethers.getContractFactory("RestrictedExecutor");
-    const re = await hre.upgrades.deployProxy(RestrictedExecutor, [[authorizer.address], [proposer.address]]);
-
-    const AccessControlledContract = await hre.ethers.getContractFactory("AccessControlledContract");
-    const callReceiver = await AccessControlledContract.deploy();
-    await callReceiver.grantRole(ROLE1, re.address);
-
-    const action = createAction(
-      callReceiver.address,
-      0,
-      callReceiver.interface.encodeFunctionData("role1Function", [keccak256("testing"), 280]),
-      hre.ethers.utils.hexZeroPad("0x0", 32)
+    const { authorizer, proposer, signers, restrictedExecutor, callReceiver, receiverEncode } = await loadFixture(
+      accessControlledFixture
     );
+    const [randomAddress] = signers;
 
-    await re.connect(proposer).createAction(action.target, action.value, action.data, action.salt);
+    const action = createAction(callReceiver.address, receiverEncode("role1Function", [keccak256("testing"), 280]));
+
+    await restrictedExecutor.connect(proposer).createAction(action.target, action.value, action.data, action.salt);
 
     await expect(
-      re.connect(randomAddress).execute(action.target, action.value, action.data, action.salt)
-    ).to.be.revertedWith(`AccessControl: account ${randomAddress.address.toLowerCase()} is missing role ${action.id}`);
+      restrictedExecutor.connect(randomAddress).execute(action.target, action.value, action.data, action.salt)
+    ).to.be.revertedWith(accessControlMessage(randomAddress.address, action.id));
 
-    await expect(re.connect(authorizer).grantRole(action.id, randomAddress.address))
-      .to.emit(re, "RoleGranted")
+    await expect(restrictedExecutor.connect(authorizer).grantRole(action.id, randomAddress.address))
+      .to.emit(restrictedExecutor, "RoleGranted")
       .withArgs(action.id, randomAddress.address, authorizer.address);
 
-    await expect(re.connect(randomAddress).execute(action.target, action.value, action.data, action.salt))
+    await expect(
+      restrictedExecutor.connect(randomAddress).execute(action.target, action.value, action.data, action.salt)
+    )
       .to.emit(callReceiver, "Role1FunctionExecuted")
       .withArgs(keccak256("testing"), 280);
   });
 });
 
-function createAction(target, value, data, salt) {
-  const id = keccak256(
-    hre.web3.eth.abi.encodeParameters(["address", "uint256", "bytes", "bytes32"], [target, value, data, salt])
+async function accessControlledFixture() {
+  const [owner, authorizer, proposer, ...signers] = await hre.ethers.getSigners();
+  const RestrictedExecutor = await hre.ethers.getContractFactory("RestrictedExecutor");
+  const restrictedExecutor = await hre.upgrades.deployProxy(RestrictedExecutor, [
+    [authorizer.address],
+    [proposer.address],
+  ]);
+
+  const AccessControlledContract = await hre.ethers.getContractFactory("AccessControlledContract");
+  const callReceiver = await AccessControlledContract.deploy();
+  await callReceiver.grantRole(ROLE1, restrictedExecutor.address);
+
+  return {
+    owner,
+    authorizer,
+    proposer,
+    signers,
+    RestrictedExecutor,
+    restrictedExecutor,
+    AccessControlledContract,
+    callReceiver,
+    receiverEncode: (...args) => callReceiver.interface.encodeFunctionData(...args), // FIXME: is there a cleaner way to do this?
+  };
+}
+
+function createAction(target, data, value, salt) {
+  const action = {
+    target,
+    value: value || 0,
+    data,
+    salt: salt || hre.ethers.utils.hexZeroPad("0x0", 32),
+  };
+  action.id = keccak256(
+    hre.web3.eth.abi.encodeParameters(
+      ["address", "uint256", "bytes", "bytes32"],
+      [action.target, action.value, action.data, action.salt]
+    )
   );
 
-  return { id, target, value, data, salt };
+  return action;
 }
