@@ -48,6 +48,8 @@ describe("Simple calls", () => {
     await expect(restrictedExecutor.connect(proposer).create(call.target, call.value, data, call.salt))
       .to.emit(restrictedExecutor, "RoleAdminChanged")
       .withArgs(call.id, DEFAULT_ADMIN_ROLE, AUTHORIZER_ROLE);
+
+    expect(await restrictedExecutor.getRoleAdmin(call.id)).to.equal(AUTHORIZER_ROLE);
   });
 
   it("allows only authorized accounts to execute operations", async () => {
@@ -68,9 +70,13 @@ describe("Simple calls", () => {
       .to.emit(restrictedExecutor, "RoleGranted")
       .withArgs(call.id, randomAddress.address, authorizer.address);
 
-    await expect(restrictedExecutor.connect(randomAddress).execute(call.target, call.value, call.data, call.salt))
-      .to.emit(callReceiver, "Function1Executed")
-      .withArgs(keccak256("testing"), 280);
+    const tx = restrictedExecutor.connect(randomAddress).execute(call.target, call.value, call.data, call.salt);
+
+    await expect(tx).to.emit(callReceiver, "Function1Executed").withArgs(keccak256("testing"), 280);
+
+    await expect(tx)
+      .to.emit(restrictedExecutor, "CallExecuted")
+      .withArgs(call.id, 0, call.target, call.value, call.data, call.salt);
   });
 
   it("allows open operations", async () => {

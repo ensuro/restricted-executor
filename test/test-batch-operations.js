@@ -77,6 +77,8 @@ describe("Batch operations", () => {
     )
       .to.emit(restrictedExecutor, "RoleAdminChanged")
       .withArgs(callBatch.id, DEFAULT_ADMIN_ROLE, AUTHORIZER_ROLE);
+
+    expect(await restrictedExecutor.getRoleAdmin(callBatch.id)).to.equal(AUTHORIZER_ROLE);
   });
 
   it("allows only authorized accounts to execute operations", async () => {
@@ -113,5 +115,12 @@ describe("Batch operations", () => {
 
     await expect(tx).to.emit(callReceiver, "Function1Executed").withArgs(keccak256("call batch"), 280);
     await expect(tx).to.emit(callReceiver, "Function2Executed").withArgs(0, randomAddress.address);
+
+    await expect(tx)
+      .to.emit(restrictedExecutor, "CallExecuted")
+      .withArgs(callBatch.id, 0, callBatch.targets[0], callBatch.values[0], callBatch.payloads[0], callBatch.salt);
+    await expect(tx)
+      .to.emit(restrictedExecutor, "CallExecuted")
+      .withArgs(callBatch.id, 1, callBatch.targets[1], callBatch.values[1], callBatch.payloads[1], callBatch.salt);
   });
 });

@@ -200,6 +200,7 @@ contract RestrictedExecutor is Initializable, AccessControlUpgradeable, UUPSUpgr
     require(_operations[id], "RestrictedExecutor: unknown operation");
     _checkRoleOrOpenRole(id);
     _execute(target, value, data);
+    emit CallExecuted(id, 0, target, value, data, salt);
   }
 
   /**
@@ -224,6 +225,7 @@ contract RestrictedExecutor is Initializable, AccessControlUpgradeable, UUPSUpgr
 
     for (uint256 i = 0; i < targets.length; ++i) {
       _execute(targets[i], values[i], payloads[i]);
+      emit CallExecuted(id, i, targets[i], values[i], payloads[i], salt);
     }
 
     // TODO: reentrancy check/guard ??
