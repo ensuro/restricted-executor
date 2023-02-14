@@ -18,10 +18,10 @@ describe("AccessControlled calls", () => {
     const call1 = createCall(callReceiver.address, receiverEncode("role1Function", [keccak256("testing"), 280]));
     const call2 = createCall(callReceiver.address, receiverEncode("role2Function", [0, randomAddress.address]));
 
-    await restrictedExecutor.connect(proposer).create(call1.target, call1.value, call1.data, call1.salt);
+    await restrictedExecutor.connect(proposer).create(call1.target, call1.value, call1.data, call1.salt, 1);
     await restrictedExecutor.connect(authorizer).grantRole(call1.id, randomAddress.address);
 
-    await restrictedExecutor.connect(proposer).create(call2.target, call2.value, call2.data, call2.salt);
+    await restrictedExecutor.connect(proposer).create(call2.target, call2.value, call2.data, call2.salt, 1);
     await restrictedExecutor.connect(authorizer).grantRole(call2.id, randomAddress.address);
 
     await callReceiver.grantRole(ROLE2, restrictedExecutor.address);

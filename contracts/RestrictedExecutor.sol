@@ -18,19 +18,27 @@ import "hardhat/console.sol";
  * Mostly inspired on [OpenZeppelin's TimeLockController](https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/governance/TimelockController.sol)
  */
 contract RestrictedExecutor is Initializable, AccessControlUpgradeable, UUPSUpgradeable {
+  uint256 public constant MAX_UINT256 = 2 ** 256 - 1;
+
   /**
-   * @notice Can authorize operations
+   * @notice Can create new operations
    */
   bytes32 public constant PROPOSER_ROLE = keccak256("PROPOSER_ROLE");
 
+  /**
+   * @notice Can authorize operation execution
+   */
   bytes32 public constant AUTHORIZER_ROLE = keccak256("AUTHORIZER_ROLE");
 
+  /**
+   * @notice Can upgrade this contract
+   */
   bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
 
   /**
    * @dev operationId -> bool mapping
    */
-  mapping(bytes32 => bool) private _operations;
+  mapping(bytes32 => uint256) private _operations;
 
   event CallCreated(
     bytes32 indexed id,
@@ -38,7 +46,8 @@ contract RestrictedExecutor is Initializable, AccessControlUpgradeable, UUPSUpgr
     address target,
     uint256 value,
     bytes data,
-    bytes32 salt
+    bytes32 salt,
+    uint256 maxExecutions
   );
 
   event CallExecuted(
@@ -136,12 +145,15 @@ contract RestrictedExecutor is Initializable, AccessControlUpgradeable, UUPSUpgr
     address target,
     uint256 value,
     bytes calldata data,
-    bytes32 salt
+    bytes32 salt,
+    uint256 maxExecutions
   ) public virtual onlyRole(PROPOSER_ROLE) {
+    require(maxExecutions > 0, "RestrictedExecutor: invalid maxExecutions value");
+
     bytes32 id = hashCall(target, value, data, salt);
-    _operations[id] = true;
+    _operations[id] = maxExecutions;
     _setRoleAdmin(id, AUTHORIZER_ROLE);
-    emit CallCreated(id, 0, target, value, data, salt);
+    emit CallCreated(id, 0, target, value, data, salt, maxExecutions);
   }
 
   /**
@@ -159,17 +171,19 @@ contract RestrictedExecutor is Initializable, AccessControlUpgradeable, UUPSUpgr
     address[] calldata targets,
     uint256[] calldata values,
     bytes[] calldata payloads,
-    bytes32 salt
+    bytes32 salt,
+    uint256 maxExecutions
   ) public virtual onlyRole(PROPOSER_ROLE) {
     require(targets.length == values.length, "RestrictedExecutor: length mistmatch");
     require(targets.length == payloads.length, "RestrictedExecutor: length mistmatch");
+    require(maxExecutions > 0, "RestrictedExecutor: invalid maxExecutions value");
 
     bytes32 id = hashCallBatch(targets, values, payloads, salt);
-    _operations[id] = true;
+    _operations[id] = maxExecutions;
     _setRoleAdmin(id, AUTHORIZER_ROLE);
 
     for (uint256 i = 0; i < targets.length; ++i) {
-      emit CallCreated(id, i, targets[i], values[i], payloads[i], salt);
+      emit CallCreated(id, i, targets[i], values[i], payloads[i], salt, maxExecutions);
     }
   }
 
@@ -195,9 +209,15 @@ contract RestrictedExecutor is Initializable, AccessControlUpgradeable, UUPSUpgr
     bytes calldata data,
     bytes32 salt
   ) public virtual {
+    // checks
     bytes32 id = hashCall(target, value, data, salt);
-    require(_operations[id], "RestrictedExecutor: unknown operation");
+    require(_operations[id] > 0, "RestrictedExecutor: unknown operation");
     _checkRoleOrOpenRole(id);
+
+    //effects
+    if (_operations[id] < MAX_UINT256) _operations[id] -= 1;
+
+    // interactions
     _execute(target, value, data);
     emit CallExecuted(id, 0, target, value, data);
   }
@@ -216,17 +236,28 @@ contract RestrictedExecutor is Initializable, AccessControlUpgradeable, UUPSUpgr
     bytes[] calldata payloads,
     bytes32 salt
   ) public virtual {
+    // checks
     require(targets.length == values.length, "RestrictedExecutor: batch length mismatch");
     require(targets.length == payloads.length, "RestrictedExecutor: batch length mismatch");
     bytes32 id = hashCallBatch(targets, values, payloads, salt);
-    require(_operations[id], "RestrictedExecutor: unkwnown operation");
+    require(_operations[id] > 0, "RestrictedExecutor: unknown operation");
     _checkRoleOrOpenRole(id);
 
+    // effects
+    if (_operations[id] < MAX_UINT256) _operations[id] -= 1;
+
+    // interactions
     for (uint256 i = 0; i < targets.length; ++i) {
       _execute(targets[i], values[i], payloads[i]);
       emit CallExecuted(id, i, targets[i], values[i], payloads[i]);
     }
+  }
 
-    // TODO: reentrancy check/guard ??
+  /**
+   * @param id the operationId to query
+   * @return remaining the number of executions remaining
+   */
+  function getRemainingExecutions(bytes32 id) public view returns (uint256 remaining) {
+    return _operations[id];
   }
 }
