@@ -1,6 +1,8 @@
 const hre = require("hardhat");
 const keccak256 = hre.web3.utils.keccak256;
 
+const { CANCELLER_ROLE } = require("./constants");
+
 const accessControlMessage = (address, role) =>
   `AccessControl: account ${address.toLowerCase()} is missing role ${role}`;
 
@@ -29,12 +31,13 @@ async function accessControlledFixture() {
 }
 
 async function simpleContractFixture() {
-  const [owner, authorizer, proposer, ...signers] = await hre.ethers.getSigners();
+  const [owner, authorizer, proposer, canceller, ...signers] = await hre.ethers.getSigners();
   const RestrictedExecutor = await hre.ethers.getContractFactory("RestrictedExecutor");
   const restrictedExecutor = await hre.upgrades.deployProxy(RestrictedExecutor, [
     [authorizer.address],
     [proposer.address],
   ]);
+  await restrictedExecutor.connect(owner).grantRole(CANCELLER_ROLE, canceller.address);
 
   const SimpleContract = await hre.ethers.getContractFactory("SimpleContract");
   const callReceiver = await SimpleContract.deploy();
@@ -43,6 +46,7 @@ async function simpleContractFixture() {
     owner,
     authorizer,
     proposer,
+    canceller,
     signers,
     RestrictedExecutor,
     restrictedExecutor,

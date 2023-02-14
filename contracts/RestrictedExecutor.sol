@@ -24,6 +24,11 @@ contract RestrictedExecutor is Initializable, AccessControlUpgradeable, UUPSUpgr
   bytes32 public constant PROPOSER_ROLE = keccak256("PROPOSER_ROLE");
 
   /**
+   * @notice Can cancel existing operations
+   */
+  bytes32 public constant CANCELLER_ROLE = keccak256("CANCELLER_ROLE");
+
+  /**
    * @notice Can authorize operation execution
    */
   bytes32 public constant AUTHORIZER_ROLE = keccak256("AUTHORIZER_ROLE");
@@ -55,6 +60,8 @@ contract RestrictedExecutor is Initializable, AccessControlUpgradeable, UUPSUpgr
     uint256 value,
     bytes data
   );
+
+  event Cancelled(bytes32 indexed id);
 
   function initialize(address[] memory authorizers, address[] memory proposers) public initializer {
     __AccessControl_init();
@@ -183,6 +190,13 @@ contract RestrictedExecutor is Initializable, AccessControlUpgradeable, UUPSUpgr
     for (uint256 i = 0; i < targets.length; ++i) {
       emit CallCreated(id, i, targets[i], values[i], payloads[i], salt, maxExecutions);
     }
+  }
+
+  function cancel(bytes32 id) public virtual onlyRole(CANCELLER_ROLE) {
+    require(_operations[id] > 0, "RestrictedExecutor: unknown operation");
+    delete _operations[id];
+
+    emit Cancelled(id);
   }
 
   /**
