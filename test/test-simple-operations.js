@@ -76,7 +76,7 @@ describe("Simple calls", () => {
 
     await expect(tx)
       .to.emit(restrictedExecutor, "CallExecuted")
-      .withArgs(call.id, 0, call.target, call.value, call.data, call.salt);
+      .withArgs(call.id, 0, call.target, call.value, call.data);
   });
 
   it("allows open operations", async () => {

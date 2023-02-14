@@ -34,7 +34,7 @@ contract RestrictedExecutor is Initializable, AccessControlUpgradeable, UUPSUpgr
 
   event CallCreated(
     bytes32 indexed id,
-    uint256 index,
+    uint256 indexed index,
     address target,
     uint256 value,
     bytes data,
@@ -43,11 +43,10 @@ contract RestrictedExecutor is Initializable, AccessControlUpgradeable, UUPSUpgr
 
   event CallExecuted(
     bytes32 indexed id,
-    uint256 index,
+    uint256 indexed index,
     address target,
     uint256 value,
-    bytes data,
-    bytes32 salt
+    bytes data
   );
 
   function initialize(address[] memory authorizers, address[] memory proposers) public initializer {
@@ -200,7 +199,7 @@ contract RestrictedExecutor is Initializable, AccessControlUpgradeable, UUPSUpgr
     require(_operations[id], "RestrictedExecutor: unknown operation");
     _checkRoleOrOpenRole(id);
     _execute(target, value, data);
-    emit CallExecuted(id, 0, target, value, data, salt);
+    emit CallExecuted(id, 0, target, value, data);
   }
 
   /**
@@ -225,7 +224,7 @@ contract RestrictedExecutor is Initializable, AccessControlUpgradeable, UUPSUpgr
 
     for (uint256 i = 0; i < targets.length; ++i) {
       _execute(targets[i], values[i], payloads[i]);
-      emit CallExecuted(id, i, targets[i], values[i], payloads[i], salt);
+      emit CallExecuted(id, i, targets[i], values[i], payloads[i]);
     }
 
     // TODO: reentrancy check/guard ??

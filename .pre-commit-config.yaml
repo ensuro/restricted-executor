@@ -21,4 +21,13 @@ repos:
     rev: v8.12.0
     hooks:
       - id: gitleaks-docker
+
+  - repo: local
+    hooks:
+      - id: solhint
+        name: solhint
+        entry: npm
+        args: ["run", "solhint"]
+        language: system
+        pass_filenames: false
 # TODO: add solhint
