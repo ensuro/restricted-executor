@@ -18,8 +18,6 @@ import "hardhat/console.sol";
  * Mostly inspired on [OpenZeppelin's TimeLockController](https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/governance/TimelockController.sol)
  */
 contract RestrictedExecutor is Initializable, AccessControlUpgradeable, UUPSUpgradeable {
-  uint256 public constant MAX_UINT256 = 2 ** 256 - 1;
-
   /**
    * @notice Can create new operations
    */
@@ -215,7 +213,7 @@ contract RestrictedExecutor is Initializable, AccessControlUpgradeable, UUPSUpgr
     _checkRoleOrOpenRole(id);
 
     //effects
-    if (_operations[id] < MAX_UINT256) _operations[id] -= 1;
+    if (_operations[id] != type(uint256).max) _operations[id] -= 1;
 
     // interactions
     _execute(target, value, data);
@@ -244,7 +242,7 @@ contract RestrictedExecutor is Initializable, AccessControlUpgradeable, UUPSUpgr
     _checkRoleOrOpenRole(id);
 
     // effects
-    if (_operations[id] < MAX_UINT256) _operations[id] -= 1;
+    if (_operations[id] != type(uint256).max) _operations[id] -= 1;
 
     // interactions
     for (uint256 i = 0; i < targets.length; ++i) {
