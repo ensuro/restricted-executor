@@ -52,50 +52,50 @@ async function simpleContractFixture() {
   };
 }
 
-function createAction(target, data, value, salt) {
-  const action = {
+function createCall(target, data, value, salt) {
+  const call = {
     target,
     value: value || 0,
     data,
     salt: salt || hre.ethers.utils.hexZeroPad("0x0", 32),
   };
-  action.id = keccak256(
+  call.id = keccak256(
     hre.web3.eth.abi.encodeParameters(
       ["address", "uint256", "bytes", "bytes32"],
-      [action.target, action.value, action.data, action.salt]
+      [call.target, call.value, call.data, call.salt]
     )
   );
 
-  return action;
+  return call;
 }
 
-function createActionBatch(targets, payloads, values, salt) {
+function createBatch(targets, payloads, values, salt) {
   values = values || targets.map(() => 0);
 
   if (!(targets.length === payloads.length && targets.length === values.length))
     throw new Error("All arrays must be the same size");
 
-  const action = {
+  const operation = {
     targets,
     values,
     payloads,
     salt: salt || hre.ethers.utils.hexZeroPad("0x0", 32),
   };
 
-  action.id = keccak256(
+  operation.id = keccak256(
     hre.web3.eth.abi.encodeParameters(
       ["address[]", "uint256[]", "bytes[]", "bytes32"],
-      [action.targets, action.values, action.payloads, action.salt]
+      [operation.targets, operation.values, operation.payloads, operation.salt]
     )
   );
 
-  return action;
+  return operation;
 }
 
 module.exports = {
   accessControlledFixture,
-  createAction,
-  createActionBatch,
+  createCall,
+  createBatch,
   simpleContractFixture,
   accessControlMessage,
 };

@@ -8,6 +8,7 @@
     "@nomiclabs/hardhat-web3": "^2.0.0",
     "@openzeppelin/hardhat-upgrades": "^1.22.1",
     "hardhat": "^2.12.6",
+    "hardhat-contract-sizer": "^2.8.0",
     "prettier": "^2.8.4",
     "solhint": "^3.3.8",
     "solhint-plugin-prettier": "^0.0.5",

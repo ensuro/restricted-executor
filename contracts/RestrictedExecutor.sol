@@ -7,9 +7,19 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
 
 import "hardhat/console.sol";
 
+/**
+ * @title Restricted Executor
+ * @author Ensuro Dev Team <dev@ensuro.co>
+ * @notice This contract allows authorized actors to call other contracts with specific parameters.
+ *
+ * The main use case is to handle more granularity on contracts with wide access controls, like an
+ * Ownable contract or an AccessControl contract with an admin role.
+ *
+ * Mostly inspired on [OpenZeppelin's TimeLockController](https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/governance/TimelockController.sol)
+ */
 contract RestrictedExecutor is Initializable, AccessControlUpgradeable, UUPSUpgradeable {
   /**
-   * @notice Can authorize actions
+   * @notice Can authorize operations
    */
   bytes32 public constant PROPOSER_ROLE = keccak256("PROPOSER_ROLE");
 
@@ -18,13 +28,26 @@ contract RestrictedExecutor is Initializable, AccessControlUpgradeable, UUPSUpgr
   bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
 
   /**
-   * @dev actionId -> bool mapping
+   * @dev operationId -> bool mapping
    */
-  mapping(bytes32 => bool) private _actions;
+  mapping(bytes32 => bool) private _operations;
 
-  event ActionCreated(bytes32 indexed id, address target, uint256 value, bytes data, bytes32 salt);
+  event CallCreated(
+    bytes32 indexed id,
+    uint256 indexed index,
+    address target,
+    uint256 value,
+    bytes data,
+    bytes32 salt
+  );
 
-  event ActionExecuted(bytes32 indexed id);
+  event CallExecuted(
+    bytes32 indexed id,
+    uint256 indexed index,
+    address target,
+    uint256 value,
+    bytes data
+  );
 
   function initialize(address[] memory authorizers, address[] memory proposers) public initializer {
     __AccessControl_init();
@@ -65,14 +88,14 @@ contract RestrictedExecutor is Initializable, AccessControlUpgradeable, UUPSUpgr
   function _authorizeUpgrade(address) internal override onlyRole(UPGRADER_ROLE) {}
 
   /**
-   *
+   * @dev Hashes a single call to create an operation id
    * @param target the target contract
    * @param value the ether amount to send along with the call
    * @param data the encoded payload for the target contract (an encoded function call)
-   * @param salt a salt to ensure action id unicity, usually just zero
-   * @return hash the action hash / id
+   * @param salt a salt to ensure call id unicity, usually just zero
+   * @return hash the call hash / operation id
    */
-  function hashAction(
+  function hashCall(
     address target,
     uint256 value,
     bytes calldata data,
@@ -82,14 +105,14 @@ contract RestrictedExecutor is Initializable, AccessControlUpgradeable, UUPSUpgr
   }
 
   /**
-   *
+   * @dev Hashes a batch of calls to create an operation id
    * @param targets the target contracts
    * @param values the ether amounts to send along with the contract calls
    * @param payloads the encoded payloads for the target contracts (encoded function calls)
-   * @param salt a salt to ensure action id unicity, usually just zero
-   * @return hash the action hash / id
+   * @param salt a salt to ensure operation id unicity, usually just zero
+   * @return hash the call batch hash / operation id
    */
-  function hashActionBatch(
+  function hashCallBatch(
     address[] calldata targets,
     uint256[] calldata values,
     bytes[] calldata payloads,
@@ -100,39 +123,39 @@ contract RestrictedExecutor is Initializable, AccessControlUpgradeable, UUPSUpgr
 
   /**
    *
-   * @dev Creates a new action. Check hashAction for parameter details.
+   * @dev Creates a new operation containing a single call. Check hashCall for parameter details.
    *
    * Requirements:
    *   - onlyRole(PROPOSER_ROLE)
    *
    * Events:
-   *   - ActionCreated with the action id and details
-   *   - RoleAdminChanged granting AUTHORIZER_ROLE admin on the new action
+   *   - CallCreated with the operation id and call details
+   *   - RoleAdminChanged granting AUTHORIZER_ROLE admin on the new operation
    */
-  function createAction(
+  function create(
     address target,
     uint256 value,
     bytes calldata data,
     bytes32 salt
   ) public virtual onlyRole(PROPOSER_ROLE) {
-    bytes32 id = hashAction(target, value, data, salt);
-    _actions[id] = true;
+    bytes32 id = hashCall(target, value, data, salt);
+    _operations[id] = true;
     _setRoleAdmin(id, AUTHORIZER_ROLE);
-    emit ActionCreated(id, target, value, data, salt);
+    emit CallCreated(id, 0, target, value, data, salt);
   }
 
   /**
    *
-   * @dev Creates a new action batch. Check hashActionBatch for parameter details.
+   * @dev Creates an operation containing a batch of calls. Check hashCallBatch for parameter details.
    *
    * Requirements:
    *   - onlyRole(PROPOSER_ROLE)
    *
    * Events:
-   *   - ActionCreated for each action in the batch, all with the same action id
-   *   - RoleAdminChanged granting AUTHORIZER_ROLE admin on the new action
+   *   - CallCreated for each call in the batch, all with the same call id
+   *   - RoleAdminChanged granting AUTHORIZER_ROLE admin on the new call
    */
-  function createActionBatch(
+  function createBatch(
     address[] calldata targets,
     uint256[] calldata values,
     bytes[] calldata payloads,
@@ -141,17 +164,17 @@ contract RestrictedExecutor is Initializable, AccessControlUpgradeable, UUPSUpgr
     require(targets.length == values.length, "RestrictedExecutor: length mistmatch");
     require(targets.length == payloads.length, "RestrictedExecutor: length mistmatch");
 
-    bytes32 id = hashActionBatch(targets, values, payloads, salt);
-    _actions[id] = true;
+    bytes32 id = hashCallBatch(targets, values, payloads, salt);
+    _operations[id] = true;
     _setRoleAdmin(id, AUTHORIZER_ROLE);
 
     for (uint256 i = 0; i < targets.length; ++i) {
-      emit ActionCreated(id, targets[i], values[i], payloads[i], salt);
+      emit CallCreated(id, i, targets[i], values[i], payloads[i], salt);
     }
   }
 
   /**
-   * @dev Execute a single action and check for success
+   * @dev Execute a single call and check for success
    */
   function _execute(address target, uint256 value, bytes calldata data) internal virtual {
     (bool success, ) = target.call{value: value}(data);
@@ -160,11 +183,11 @@ contract RestrictedExecutor is Initializable, AccessControlUpgradeable, UUPSUpgr
 
   /**
    *
-   * @dev Executes an action. Check hashAction for parameter details.
+   * @dev Executes an operation with a single call. Check hashCall for parameter details.
    *
    * Requirements:
-   *   - Action was created
-   *   - msg.sender has been granted permissions on the action
+   *   - Operation was created
+   *   - msg.sender has been granted permissions on the operation
    */
   function execute(
     address target,
@@ -172,19 +195,20 @@ contract RestrictedExecutor is Initializable, AccessControlUpgradeable, UUPSUpgr
     bytes calldata data,
     bytes32 salt
   ) public virtual {
-    bytes32 id = hashAction(target, value, data, salt);
-    require(_actions[id], "RestrictedExecutor: unkwnown action");
+    bytes32 id = hashCall(target, value, data, salt);
+    require(_operations[id], "RestrictedExecutor: unknown operation");
     _checkRoleOrOpenRole(id);
     _execute(target, value, data);
+    emit CallExecuted(id, 0, target, value, data);
   }
 
   /**
    *
-   * @dev Executes an action batch. Check hashActionBatch for parameter details.
+   * @dev Executes an operation with a call batch. Check hashCallBatch for parameter details.
    *
    * Requirements:
-   *   - Action batch was created
-   *   - msg.sender has been granted permissions on the action
+   *   - Operation was created
+   *   - msg.sender has been granted permissions on the operation
    */
   function executeBatch(
     address[] calldata targets,
@@ -192,14 +216,15 @@ contract RestrictedExecutor is Initializable, AccessControlUpgradeable, UUPSUpgr
     bytes[] calldata payloads,
     bytes32 salt
   ) public virtual {
-    require(targets.length == values.length, "RestrictedExecutor: length mistmatch");
-    require(targets.length == payloads.length, "RestrictedExecutor: length mistmatch");
-    bytes32 id = hashActionBatch(targets, values, payloads, salt);
-    require(_actions[id], "RestrictedExecutor: unkwnown action");
+    require(targets.length == values.length, "RestrictedExecutor: batch length mismatch");
+    require(targets.length == payloads.length, "RestrictedExecutor: batch length mismatch");
+    bytes32 id = hashCallBatch(targets, values, payloads, salt);
+    require(_operations[id], "RestrictedExecutor: unkwnown operation");
     _checkRoleOrOpenRole(id);
 
     for (uint256 i = 0; i < targets.length; ++i) {
       _execute(targets[i], values[i], payloads[i]);
+      emit CallExecuted(id, i, targets[i], values[i], payloads[i]);
     }
 
     // TODO: reentrancy check/guard ??
