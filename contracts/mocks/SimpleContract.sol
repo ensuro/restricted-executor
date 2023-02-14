@@ -14,4 +14,8 @@ contract SimpleContract {
   function function2(uint8 param1, address param2) public {
     emit Function2Executed(param1, param2);
   }
+
+  function revertingFunction() public pure {
+    revert("reverting function reverted");
+  }
 }

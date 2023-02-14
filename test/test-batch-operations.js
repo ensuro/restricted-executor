@@ -257,4 +257,33 @@ describe("Batch operations", () => {
         .createBatch(callBatch.targets, callBatch.values, callBatch.payloads, callBatch.salt, 0)
     ).to.be.revertedWith("RestrictedExecutor: invalid maxExecutions value");
   });
+
+  it("ensures operation atomicity", async () => {
+    const { authorizer, proposer, signers, restrictedExecutor, callReceiver, receiverEncode } = await loadFixture(
+      simpleContractFixture
+    );
+    const [randomAddress] = signers;
+
+    const callBatch = createBatch(
+      [callReceiver.address, callReceiver.address, callReceiver.address],
+      [
+        receiverEncode("function1", [keccak256("call batch"), 280]),
+        receiverEncode("revertingFunction", []),
+        receiverEncode("function2", [0, randomAddress.address]),
+      ]
+    );
+
+    await restrictedExecutor
+      .connect(proposer)
+      .createBatch(callBatch.targets, callBatch.values, callBatch.payloads, callBatch.salt, 1);
+    await restrictedExecutor.connect(authorizer).grantRole(callBatch.id, randomAddress.address);
+
+    await expect(
+      restrictedExecutor
+        .connect(randomAddress)
+        .executeBatch(callBatch.targets, callBatch.values, callBatch.payloads, callBatch.salt)
+    ).to.be.revertedWith("RestrictedExecutor: underlying transaction reverted");
+
+    expect(await restrictedExecutor.getRemainingExecutions(callBatch.id)).to.equal(1);
+  });
 });
