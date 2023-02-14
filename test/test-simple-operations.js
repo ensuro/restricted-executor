@@ -31,12 +31,18 @@ describe("Simple calls", () => {
     const call = createCall(callReceiver.address, receiverEncode("function1", [keccak256("testing"), 280]));
 
     await expect(
-      restrictedExecutor.connect(randomAddress).create(call.target, call.value, call.data, call.salt)
+      restrictedExecutor
+        .connect(randomAddress)
+        .create(call.target, call.value, call.data, call.salt, hre.ethers.constants.MaxUint256)
     ).to.be.revertedWith(accessControlMessage(randomAddress.address, PROPOSER_ROLE));
 
-    await expect(restrictedExecutor.connect(proposer).create(call.target, call.value, call.data, call.salt))
+    await expect(
+      restrictedExecutor
+        .connect(proposer)
+        .create(call.target, call.value, call.data, call.salt, hre.ethers.constants.MaxUint256)
+    )
       .to.emit(restrictedExecutor, "CallCreated")
-      .withArgs(call.id, 0, call.target, call.value, call.data, call.salt);
+      .withArgs(call.id, 0, call.target, call.value, call.data, call.salt, hre.ethers.constants.MaxUint256);
   });
 
   it("grants AUTHORIZER_ROLE admin permissions on new operations", async () => {
@@ -45,7 +51,11 @@ describe("Simple calls", () => {
     const data = receiverEncode("function1", [keccak256("testing"), 280]);
     const call = createCall(callReceiver.address, data);
 
-    await expect(restrictedExecutor.connect(proposer).create(call.target, call.value, data, call.salt))
+    await expect(
+      restrictedExecutor
+        .connect(proposer)
+        .create(call.target, call.value, data, call.salt, hre.ethers.constants.MaxUint256)
+    )
       .to.emit(restrictedExecutor, "RoleAdminChanged")
       .withArgs(call.id, DEFAULT_ADMIN_ROLE, AUTHORIZER_ROLE);
 
@@ -60,7 +70,9 @@ describe("Simple calls", () => {
 
     const call = createCall(callReceiver.address, receiverEncode("function1", [keccak256("testing"), 280]));
 
-    await restrictedExecutor.connect(proposer).create(call.target, call.value, call.data, call.salt);
+    await restrictedExecutor
+      .connect(proposer)
+      .create(call.target, call.value, call.data, call.salt, hre.ethers.constants.MaxUint256);
 
     await expect(
       restrictedExecutor.connect(randomAddress).execute(call.target, call.value, call.data, call.salt)
@@ -87,7 +99,9 @@ describe("Simple calls", () => {
 
     const call = createCall(callReceiver.address, receiverEncode("function1", [keccak256("openActions"), 280]));
 
-    await restrictedExecutor.connect(proposer).create(call.target, call.value, call.data, call.salt);
+    await restrictedExecutor
+      .connect(proposer)
+      .create(call.target, call.value, call.data, call.salt, hre.ethers.constants.MaxUint256);
 
     await restrictedExecutor.connect(authorizer).grantRole(call.id, hre.ethers.constants.AddressZero);
 
@@ -110,5 +124,65 @@ describe("Simple calls", () => {
     await expect(
       restrictedExecutor.connect(randomAddress).execute(call.target, call.value, call.data, call.salt)
     ).to.be.revertedWith("RestrictedExecutor: unknown operation");
+  });
+
+  it("limits the number of executions per operation", async () => {
+    const { authorizer, proposer, signers, restrictedExecutor, callReceiver, receiverEncode } = await loadFixture(
+      simpleContractFixture
+    );
+    const [randomAddress] = signers;
+
+    const call = createCall(callReceiver.address, receiverEncode("function1", [keccak256("max executions test"), 100]));
+
+    await restrictedExecutor.connect(proposer).create(call.target, call.value, call.data, call.salt, 2);
+    await restrictedExecutor.connect(authorizer).grantRole(call.id, hre.ethers.constants.AddressZero);
+    expect(await restrictedExecutor.getRemainingExecutions(call.id)).to.equal(2);
+
+    await restrictedExecutor.connect(randomAddress).execute(call.target, call.value, call.data, call.salt);
+    expect(await restrictedExecutor.getRemainingExecutions(call.id)).to.equal(1);
+
+    await restrictedExecutor.connect(randomAddress).execute(call.target, call.value, call.data, call.salt);
+    expect(await restrictedExecutor.getRemainingExecutions(call.id)).to.equal(0);
+
+    await expect(
+      restrictedExecutor.connect(randomAddress).execute(call.target, call.value, call.data, call.salt)
+    ).to.be.revertedWith("RestrictedExecutor: unknown operation");
+  });
+
+  it("allows operations to have an infinite number of executions", async () => {
+    const { authorizer, proposer, signers, restrictedExecutor, callReceiver, receiverEncode } = await loadFixture(
+      simpleContractFixture
+    );
+    const [randomAddress] = signers;
+
+    const call = createCall(
+      callReceiver.address,
+      receiverEncode("function1", [keccak256("infinite max executions test"), 100])
+    );
+
+    await restrictedExecutor
+      .connect(proposer)
+      .create(call.target, call.value, call.data, call.salt, hre.ethers.constants.MaxUint256);
+    await restrictedExecutor.connect(authorizer).grantRole(call.id, hre.ethers.constants.AddressZero);
+
+    expect(await restrictedExecutor.getRemainingExecutions(call.id)).to.equal(hre.ethers.constants.MaxUint256);
+    await restrictedExecutor.connect(randomAddress).execute(call.target, call.value, call.data, call.salt);
+    expect(await restrictedExecutor.getRemainingExecutions(call.id)).to.equal(hre.ethers.constants.MaxUint256);
+  });
+
+  it("does not allow creating operations with no execution allowance", async () => {
+    const { authorizer, proposer, signers, restrictedExecutor, callReceiver, receiverEncode } = await loadFixture(
+      simpleContractFixture
+    );
+    const [randomAddress] = signers;
+
+    const call = createCall(
+      callReceiver.address,
+      receiverEncode("function1", [keccak256("infinite max executions test"), 100])
+    );
+
+    await expect(
+      restrictedExecutor.connect(proposer).create(call.target, call.value, call.data, call.salt, 0)
+    ).to.be.revertedWith("RestrictedExecutor: invalid maxExecutions value");
   });
 });
