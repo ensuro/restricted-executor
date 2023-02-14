@@ -7,9 +7,19 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
 
 import "hardhat/console.sol";
 
+/**
+ * @title Restricted Executor
+ * @author Ensuro Dev Team <dev@ensuro.co>
+ * @notice This contract allows authorized actors to call other contracts with specific parameters.
+ *
+ * The main use case is to handle more granularity on contracts with wide access controls, like an
+ * Ownable contract or an AccessControl contract with an admin role.
+ *
+ * Mostly inspired on [OpenZeppelin's TimeLockController](https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/governance/TimelockController.sol)
+ */
 contract RestrictedExecutor is Initializable, AccessControlUpgradeable, UUPSUpgradeable {
   /**
-   * @notice Can authorize Calls
+   * @notice Can authorize operations
    */
   bytes32 public constant PROPOSER_ROLE = keccak256("PROPOSER_ROLE");
 
@@ -18,7 +28,7 @@ contract RestrictedExecutor is Initializable, AccessControlUpgradeable, UUPSUpgr
   bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
 
   /**
-   * @dev callId -> bool mapping
+   * @dev operationId -> bool mapping
    */
   mapping(bytes32 => bool) private _operations;
 
@@ -174,11 +184,11 @@ contract RestrictedExecutor is Initializable, AccessControlUpgradeable, UUPSUpgr
 
   /**
    *
-   * @dev Executes a call. Check hashCall for parameter details.
+   * @dev Executes an operation with a single call. Check hashCall for parameter details.
    *
    * Requirements:
-   *   - Call was created
-   *   - msg.sender has been granted permissions on the call
+   *   - Operation was created
+   *   - msg.sender has been granted permissions on the operation
    */
   function execute(
     address target,
@@ -194,11 +204,11 @@ contract RestrictedExecutor is Initializable, AccessControlUpgradeable, UUPSUpgr
 
   /**
    *
-   * @dev Executes a call batch. Check hashCallBatch for parameter details.
+   * @dev Executes an operation with a call batch. Check hashCallBatch for parameter details.
    *
    * Requirements:
-   *   - Call batch was created
-   *   - msg.sender has been granted permissions on the call
+   *   - Operation was created
+   *   - msg.sender has been granted permissions on the operation
    */
   function executeBatch(
     address[] calldata targets,
@@ -209,7 +219,7 @@ contract RestrictedExecutor is Initializable, AccessControlUpgradeable, UUPSUpgr
     require(targets.length == values.length, "RestrictedExecutor: batch length mismatch");
     require(targets.length == payloads.length, "RestrictedExecutor: batch length mismatch");
     bytes32 id = hashCallBatch(targets, values, payloads, salt);
-    require(_operations[id], "RestrictedExecutor: unkwnown call");
+    require(_operations[id], "RestrictedExecutor: unkwnown operation");
     _checkRoleOrOpenRole(id);
 
     for (uint256 i = 0; i < targets.length; ++i) {
