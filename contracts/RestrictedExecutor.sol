@@ -220,7 +220,7 @@ contract RestrictedExecutor is Initializable, AccessControlUpgradeable, UUPSUpgr
     uint256 value,
     bytes calldata data,
     bytes32 salt
-  ) public virtual {
+  ) public payable virtual {
     // checks
     bytes32 id = hashCall(target, value, data, salt);
     require(_operations[id] > 0, "RestrictedExecutor: unknown operation");
@@ -247,7 +247,7 @@ contract RestrictedExecutor is Initializable, AccessControlUpgradeable, UUPSUpgr
     uint256[] calldata values,
     bytes[] calldata payloads,
     bytes32 salt
-  ) public virtual {
+  ) public payable virtual {
     // checks
     require(targets.length == values.length, "RestrictedExecutor: batch length mismatch");
     require(targets.length == payloads.length, "RestrictedExecutor: batch length mismatch");
