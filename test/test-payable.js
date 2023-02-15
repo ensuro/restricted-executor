@@ -2,15 +2,13 @@ const { loadFixture } = require("@nomicfoundation/hardhat-network-helpers");
 const { expect } = require("chai");
 const hre = require("hardhat");
 
-const { accessControlMessage, createCall, createBatch, simpleContractFixture } = require("./fixtures");
-const { PROPOSER_ROLE, AUTHORIZER_ROLE, DEFAULT_ADMIN_ROLE } = require("./constants");
-
-const keccak256 = hre.web3.utils.keccak256;
+const { createCall, createBatch, simpleContractFixture } = require("./fixtures");
 
 describe("Payable calls", () => {
   it("forwards eth to the target contract on simple calls", async () => {
-    const { owner, proposer, authorizer, signers, restrictedExecutor, callReceiver, receiverEncode } =
-      await loadFixture(simpleContractFixture);
+    const { proposer, authorizer, signers, restrictedExecutor, callReceiver, receiverEncode } = await loadFixture(
+      simpleContractFixture
+    );
     const [randomAddress] = signers;
 
     const ethAmount = hre.ethers.utils.parseEther("2.5");
@@ -31,8 +29,9 @@ describe("Payable calls", () => {
   });
 
   it("forwards eth to the target contract on batch calls", async () => {
-    const { owner, proposer, authorizer, signers, restrictedExecutor, callReceiver, receiverEncode } =
-      await loadFixture(simpleContractFixture);
+    const { proposer, authorizer, signers, restrictedExecutor, callReceiver, receiverEncode } = await loadFixture(
+      simpleContractFixture
+    );
     const [randomAddress] = signers;
 
     const ethAmount = hre.ethers.utils.parseEther("5.2");
@@ -53,8 +52,9 @@ describe("Payable calls", () => {
   });
 
   it("reverts if eth is not enough for target contract", async () => {
-    const { owner, proposer, authorizer, signers, restrictedExecutor, callReceiver, receiverEncode } =
-      await loadFixture(simpleContractFixture);
+    const { proposer, authorizer, signers, restrictedExecutor, callReceiver, receiverEncode } = await loadFixture(
+      simpleContractFixture
+    );
     const [randomAddress] = signers;
 
     const ethAmount = hre.ethers.utils.parseEther("0.3");
@@ -73,8 +73,9 @@ describe("Payable calls", () => {
   });
 
   it("restricted executor can pay for calls itself", async () => {
-    const { owner, proposer, authorizer, signers, restrictedExecutor, callReceiver, receiverEncode } =
-      await loadFixture(simpleContractFixture);
+    const { proposer, authorizer, signers, restrictedExecutor, callReceiver, receiverEncode } = await loadFixture(
+      simpleContractFixture
+    );
     const [randomAddress] = signers;
 
     await randomAddress.sendTransaction({ to: restrictedExecutor.address, value: hre.ethers.utils.parseEther("1000") });
