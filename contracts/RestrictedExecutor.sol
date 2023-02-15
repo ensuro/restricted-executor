@@ -69,6 +69,11 @@ contract RestrictedExecutor is Initializable, AccessControlUpgradeable, UUPSUpgr
     __RestrictedExecutor_init_unchained(authorizers, proposers);
   }
 
+  /**
+   * @dev Contract might receive/hold ETH as part of the maintenance process.
+   */
+  receive() external payable {}
+
   // solhint-disable-next-line func-name-mixedcase
   function __RestrictedExecutor_init_unchained(
     address[] memory authorizers,

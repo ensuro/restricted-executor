@@ -71,4 +71,30 @@ describe("Payable calls", () => {
         .executeBatch(batch.targets, batch.values, batch.payloads, batch.salt, { value: ethAmount })
     ).to.be.revertedWith("RestrictedExecutor: underlying transaction reverted");
   });
+
+  it("restricted executor can pay for calls itself", async () => {
+    const { owner, proposer, authorizer, signers, restrictedExecutor, callReceiver, receiverEncode } =
+      await loadFixture(simpleContractFixture);
+    const [randomAddress] = signers;
+
+    await randomAddress.sendTransaction({ to: restrictedExecutor.address, value: hre.ethers.utils.parseEther("1000") });
+    expect(await restrictedExecutor.provider.getBalance(restrictedExecutor.address)).to.equal(
+      hre.ethers.utils.parseEther("1000")
+    );
+
+    const ethAmount = hre.ethers.utils.parseEther("10.9");
+    const call = createCall(callReceiver.address, receiverEncode("payableFunction", []), ethAmount);
+
+    await restrictedExecutor
+      .connect(proposer)
+      .create(call.target, call.value, call.data, call.salt, hre.ethers.constants.MaxUint256);
+    await restrictedExecutor.connect(authorizer).grantRole(call.id, randomAddress.address);
+
+    // Tx is sent without ETH
+    const tx = restrictedExecutor.connect(randomAddress).execute(call.target, call.value, call.data, call.salt);
+
+    await expect(tx).to.emit(callReceiver, "PayableExecuted").withArgs(ethAmount);
+    await expect(tx).to.changeEtherBalance(restrictedExecutor.address, ethAmount.mul(-1));
+    expect(await callReceiver.provider.getBalance(callReceiver.address)).to.equal(ethAmount);
+  });
 });
