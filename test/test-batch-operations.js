@@ -286,4 +286,88 @@ describe("Batch operations", () => {
 
     expect(await restrictedExecutor.getRemainingExecutions(callBatch.id)).to.equal(1);
   });
+
+  it("rejects incomplete batches (creation)", async () => {
+    const { proposer, restrictedExecutor, callReceiver, receiverEncode } = await loadFixture(simpleContractFixture);
+
+    const callBatch = createBatch(
+      [callReceiver.address, callReceiver.address],
+      [
+        receiverEncode("function1", [keccak256("authorizer test"), 280]),
+        receiverEncode("function2", [0, callReceiver.address]),
+      ]
+    );
+
+    // bad length of values array
+    await expect(
+      restrictedExecutor
+        .connect(proposer)
+        .createBatch(callBatch.targets, [0], callBatch.payloads, callBatch.salt, hre.ethers.constants.MaxUint256)
+    ).to.be.revertedWith("RestrictedExecutor: length mistmatch");
+
+    // bad length of targets array
+    await expect(
+      restrictedExecutor
+        .connect(proposer)
+        .createBatch(
+          [callBatch.targets[0]],
+          callBatch.values,
+          callBatch.payloads,
+          callBatch.salt,
+          hre.ethers.constants.MaxUint256
+        )
+    ).to.be.revertedWith("RestrictedExecutor: length mistmatch");
+
+    // bad length of payouts array
+    await expect(
+      restrictedExecutor
+        .connect(proposer)
+        .createBatch(
+          callBatch.targets,
+          callBatch.values,
+          [callBatch.payloads[0]],
+          callBatch.salt,
+          hre.ethers.constants.MaxUint256
+        )
+    ).to.be.revertedWith("RestrictedExecutor: length mistmatch");
+  });
+
+  it("rejects incomplete batches (execution)", async () => {
+    const { proposer, authorizer, signers, restrictedExecutor, callReceiver, receiverEncode } = await loadFixture(
+      simpleContractFixture
+    );
+    const [randomAddress] = signers;
+
+    const callBatch = createBatch(
+      [callReceiver.address, callReceiver.address],
+      [
+        receiverEncode("function1", [keccak256("authorizer test"), 280]),
+        receiverEncode("function2", [0, callReceiver.address]),
+      ]
+    );
+
+    await restrictedExecutor
+      .connect(proposer)
+      .createBatch(callBatch.targets, callBatch.values, callBatch.payloads, callBatch.salt, 1);
+    await restrictedExecutor.connect(authorizer).grantRole(callBatch.id, randomAddress.address);
+
+    // bad length of values array
+    await expect(
+      restrictedExecutor.connect(randomAddress).executeBatch(callBatch.targets, [0], callBatch.payloads, callBatch.salt)
+    ).to.be.revertedWith("RestrictedExecutor: batch length mismatch");
+
+    // bad length of targets array
+    await expect(
+      restrictedExecutor
+        .connect(randomAddress)
+        .executeBatch([callBatch.targets[0]], callBatch.values, callBatch.payloads, callBatch.salt)
+    ).to.be.revertedWith("RestrictedExecutor: batch length mismatch");
+
+    // bad length of payouts array
+    await expect(
+      restrictedExecutor
+        .connect(randomAddress)
+        .executeBatch(callBatch.targets, callBatch.values, [callBatch.payloads[0]], callBatch.salt)
+    ).to.be.revertedWith("RestrictedExecutor: batch length mismatch");
+  });
 });
