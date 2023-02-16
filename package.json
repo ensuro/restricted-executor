@@ -1,4 +1,7 @@
 {
+  "name": "restricted-executor",
+  "version": "0.0.1",
+  "description": "Smart contract that enables authorized actors to call other contracts with specific parameters.",
   "scripts": {
     "prettier": "prettier --write 'contracts/**/*.sol' --write 'test/**/*.js'",
     "solhint": "solhint 'contracts/**/*.sol'"
