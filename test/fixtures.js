@@ -56,6 +56,30 @@ async function simpleContractFixture() {
   };
 }
 
+async function ownableContractFixture() {
+  const [owner, authorizer, proposer, ...signers] = await hre.ethers.getSigners();
+  const RestrictedExecutor = await hre.ethers.getContractFactory("RestrictedExecutor");
+  const restrictedExecutor = await hre.upgrades.deployProxy(RestrictedExecutor, [
+    [authorizer.address],
+    [proposer.address],
+  ]);
+
+  const OwnableContract = await hre.ethers.getContractFactory("OwnableContract");
+  const callReceiver = await OwnableContract.deploy();
+
+  return {
+    owner,
+    authorizer,
+    proposer,
+    signers,
+    RestrictedExecutor,
+    restrictedExecutor,
+    AccessControlledContract: OwnableContract,
+    callReceiver,
+    receiverEncode: (...args) => callReceiver.interface.encodeFunctionData(...args), // FIXME: is there a cleaner way to do this?
+  };
+}
+
 function createCall(target, data, value, salt) {
   const call = {
     target,
@@ -98,8 +122,9 @@ function createBatch(targets, payloads, values, salt) {
 
 module.exports = {
   accessControlledFixture,
-  createCall,
-  createBatch,
-  simpleContractFixture,
   accessControlMessage,
+  createBatch,
+  createCall,
+  ownableContractFixture,
+  simpleContractFixture,
 };
